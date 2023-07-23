@@ -1593,3 +1593,37 @@ def test_torch_select(
         dim=axis,
         index=idx,
     )
+
+
+ @handle_frontend_test(
+        fn_tree="torch.index_reduce",
+        xs_dtypes_dim_idx=_arrays_dim_idx_n_dtypes(),
+        alpha=st.integers(min_value=1, max_value=2),
+    )
+    def test_torch_index_reduce(
+            *,
+            xs_dtypes_dim_idx,
+            alpha,
+            on_device,
+            fn_tree,
+            frontend,
+            test_flags,
+    ):
+        xs, input_dtypes, axis, indices = xs_dtypes_dim_idx
+        if xs[0].shape[axis] < xs[1].shape[axis]:
+            source, input = xs
+        else:
+            input, source = xs
+        helpers.test_frontend_function(
+            input_dtypes=[input_dtypes[0], "int64", input_dtypes[1]],
+            frontend=frontend,
+            test_flags=test_flags,
+            fn_tree=fn_tree,
+            on_device=on_device,
+            rtol=1e-03,
+            input=input,
+            dim=axis,
+            index=indices,
+            source=source,
+            alpha=alpha,
+        )
