@@ -366,3 +366,74 @@ def select(input, dim, index):
     slices = [slice(None)] * num_dims
     slices[dim] = index
     return input[tuple(slices)]
+
+@to_ivy_arrays_and_back
+def index_reduce(
+    input, dim, index, source=None, reduce="sum", include_self=True, out=None
+):
+    input = ivy.swapaxes(input, dim, 0)
+    if source is not None:
+        source = ivy.swapaxes(source, dim, 0)
+    else:
+        source = input
+
+    _to_reduces = []
+    index = sorted(zip(index, range(len(index))), key=lambda x: x[0])
+
+    while index:
+        _curr_idx = index[0][0]
+        while len(_to_reduces) < _curr_idx:
+            _to_reduces.append(ivy.zeros_like(source[0]))
+
+        _to_reduce_cum = source[index[0][1]]
+
+        if include_self:
+            while len(index) > 1 and index[0][0] == index[1][0]:
+                if reduce == "sum":
+                    _to_reduce_cum = ivy.add(_to_reduce_cum, source[index[1][1]])
+                elif reduce == "mean":
+                    _to_reduce_cum = ivy.add(_to_reduce_cum, source[index[1][1]])
+                elif reduce == "prod":
+                    _to_reduce_cum = ivy.mul(_to_reduce_cum, source[index[1][1]])
+                elif reduce == "amax":
+                    _to_reduce_cum = ivy.max(_to_reduce_cum, source[index[1][1]])
+                elif reduce == "amin":
+                    _to_reduce_cum = ivy.min(_to_reduce_cum, source[index[1][1]])
+                else:
+                    raise ValueError(
+                        "Invalid reduce parameter. Supported values: 'sum', 'mean',"
+                        " 'prod', 'amax', 'amin'."
+                    )
+                index.pop(1)
+
+        index.pop(0)
+        _to_reduces.append(_to_reduce_cum)
+
+    while len(_to_reduces) < input.shape[0]:
+        _to_reduces.append(ivy.zeros_like(source[0]))
+
+    _to_reduces = ivy.stack(_to_reduces)
+
+    if len(input.shape) < 2:
+        _to_reduces = ivy.flatten(_to_reduces)
+
+    if reduce == "sum":
+        ret = ivy.sum(_to_reduces, axis=0)
+    elif reduce == "mean":
+        ret = ivy.mean(_to_reduces, axis=0)
+    elif reduce == "prod":
+        ret = ivy.prod(_to_reduces, axis=0)
+    elif reduce == "amax":
+        ret = ivy.max(_to_reduces, axis=0)
+    elif reduce == "amin":
+        ret = ivy.min(_to_reduces, axis=0)
+    else:
+        raise ValueError(
+            "Invalid reduce parameter. Supported values: 'sum', 'mean', 'prod', 'amax',"
+            " 'amin'."
+        )
+
+    ret = ivy.swapaxes(ret, 0, dim, out=out)
+
+    return ret
+
